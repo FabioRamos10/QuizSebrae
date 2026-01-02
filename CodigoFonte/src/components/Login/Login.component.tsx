@@ -106,10 +106,24 @@ export const Login: FunctionComponent<LoginProps> = ({
 		}
 
 		event.preventDefault();
+		
+		// Remove todos os caracteres não numéricos
+		const cpfOnlyNumbers = user.replace(/\D/g, '');
+		
+		// Valida se o CPF tem exatamente 11 dígitos
+		if (cpfOnlyNumbers.length !== 11) {
+			setError(true);
+			return;
+		}
+
+		// Garante que o CPF tenha exatamente 11 dígitos (preserva zeros à esquerda)
+		// O padStart só adiciona zeros se tiver menos de 11 dígitos
+		const cpfFormatted = cpfOnlyNumbers.padStart(11, '0');
+		
 		const result = await signIn('credentials', {
 			redirect: false,
-			username: user.replace(/\D/g, ''),
-			password: pass.replace(/\D/g, ''),
+			username: cpfFormatted,
+			password: cpfFormatted,
 		});
 
 		if (result?.error) {
