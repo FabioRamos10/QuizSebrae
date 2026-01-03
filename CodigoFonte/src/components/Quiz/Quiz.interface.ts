@@ -10,6 +10,12 @@ export interface QuizOption {
 	icon?: string;
 }
 
+export interface QuizVideo {
+	thumbnail?: string;
+	url?: string;
+	title?: string;
+}
+
 export interface QuizProps {
 	totalQuestions?: number;
 	currentQuestion?: number;
