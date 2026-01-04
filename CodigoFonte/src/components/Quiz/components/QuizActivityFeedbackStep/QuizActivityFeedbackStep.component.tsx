@@ -180,15 +180,17 @@ export const QuizActivityFeedbackStep: FunctionComponent<QuizActivityFeedbackSte
 
 					{video && (
 							<div className='flex flex-col items-end lg:w-[300px] xl:w-[350px] flex-shrink-0 lg:ml-8 xl:ml-12 -mt-12 md:-mt-14 lg:-mt-16'>
-								<div className='bg-[#8156FF] rounded-t-2xl overflow-hidden relative w-full' style={{ aspectRatio: '3/4', height: 'auto' }}>
+								<div className='bg-[#8156FF] rounded-2xl overflow-hidden relative w-full' style={{ aspectRatio: '3/4', height: 'auto' }}>
 								{!isVideoPlaying ? (
 									<>
-										{video.thumbnail && (
+										{video.thumbnail ? (
 											<img
 												src={video.thumbnail}
 												alt={video.title || 'Video thumbnail'}
 												className='w-full h-full object-cover'
 											/>
+										) : (
+											<div className='w-full h-full bg-[#8156FF]'></div>
 										)}
 										{/* Botão de play preto centralizado */}
 										<button

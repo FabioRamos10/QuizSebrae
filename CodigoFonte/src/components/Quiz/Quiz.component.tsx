@@ -1,7 +1,7 @@
 'use client';
 
 import { FunctionComponent, useState } from 'react';
-import { QuizProps, QuizQuestion, QuizActivity, QuizAnswer } from './Quiz.interface';
+import { QuizProps, QuizQuestion, QuizActivity } from './Quiz.interface';
 import { QuizQuestionStep } from './components/QuizQuestionStep';
 import { QuizSubjectiveQuestionStep } from './components/QuizSubjectiveQuestionStep';
 import { QuizFeedbackStep } from './components/QuizFeedbackStep';
@@ -9,6 +9,7 @@ import { QuizActivityStep } from './components/QuizActivityStep';
 import { QuizActivityFeedbackStep } from './components/QuizActivityFeedbackStep';
 import { QuizSubjectiveFeedbackStep } from './components/QuizSubjectiveFeedbackStep';
 import { QuizCompletionStep } from './components/QuizCompletionStep';
+import { QuizSuccessStep, QuizAnswer } from './components/QuizSuccessStep';
 
 // Dados mockados do quiz - em produção viriam de uma API
 const mockQuestions: QuizQuestion[] = [
@@ -98,7 +99,9 @@ export const Quiz: FunctionComponent<QuizProps> = ({
 	const [showActivityFeedback, setShowActivityFeedback] = useState<{
 		[activityId: number]: boolean;
 	}>({});
+
 	const [showCompletion, setShowCompletion] = useState(false);
+	const [showSuccess, setShowSuccess] = useState(false);
 
 	const handleAnswerSelect = (optionId: string) => {
 		const questionId = currentQuestion;
@@ -191,7 +194,7 @@ export const Quiz: FunctionComponent<QuizProps> = ({
 			console.error('Erro ao navegar para próxima pergunta:', error);
 		}
 	};
-
+		
 	// Função temporária para visualizar a tela de conclusão
 	const handleShowCompletion = () => {
 		setShowCompletion(true);
@@ -229,7 +232,44 @@ export const Quiz: FunctionComponent<QuizProps> = ({
 				[currentActivity.id]: false,
 			}));
 		}
-		handleNext();
+		
+		// Verifica se é a última questão e se todas foram respondidas
+		if (currentQuestion >= totalQuestions) {
+			// Verifica se todas as questões foram respondidas
+			const allQuestionsAnswered = Array.from({ length: totalQuestions }, (_, i) => {
+				const questionNum = i + 1;
+				const activity = activities.find((a) => a.id === questionNum);
+				if (activity) {
+					// Para atividades, verifica se foram enviados arquivos
+					return submittedActivities[activity.id] && (activityFiles[activity.id]?.length || 0) > 0;
+				} else {
+					// Para perguntas, verifica se foi selecionada uma resposta
+					return !!selectedAnswers[questionNum];
+				}
+			}).every(Boolean);
+			
+			if (allQuestionsAnswered) {
+				setShowSuccess(true);
+			} else {
+				// Se não completou todas, volta para a primeira não respondida
+				for (let i = 1; i <= totalQuestions; i++) {
+					const activity = activities.find((a) => a.id === i);
+					if (activity) {
+						if (!submittedActivities[activity.id] || (activityFiles[activity.id]?.length || 0) === 0) {
+							setCurrentQuestion(i);
+							return;
+						}
+					} else {
+						if (!selectedAnswers[i]) {
+							setCurrentQuestion(i);
+							return;
+						}
+					}
+				}
+			}
+		} else {
+			handleNext();
+		}
 	};
 
 	const handleActivityNext = () => {
@@ -276,6 +316,7 @@ export const Quiz: FunctionComponent<QuizProps> = ({
 		explanation: isCorrect 
 			? 'Usar as redes sociais ajuda seu negócio a alcançar mais pessoas e pode aumentar suas vendas.'
 			: 'Divulgar seu negócio nas redes sociais é importante porque ajuda você a alcançar mais pessoas sem gastar muito.',
+		video: undefined,
 		// video: {
 		// 	thumbnail: 'https://via.placeholder.com/400x225/6B46C1/FFFFFF?text=Video+Thumbnail',
 		// 	url: 'https://example.com/video.mp4',
@@ -284,11 +325,67 @@ export const Quiz: FunctionComponent<QuizProps> = ({
 	} : {
 		points: 0,
 		explanation: '',
+		video: undefined,
+	};
+
+	// Prepara as respostas para a tela de sucesso
+	const prepareAnswers = (): QuizAnswer[] => {
+		const answers: QuizAnswer[] = [];
+		
+		// Itera sobre todas as questões
+		for (let i = 1; i <= totalQuestions; i++) {
+			const activity = activities.find((a) => a.id === i);
+			const questionData = mockQuestions.find((q) => q.id === i) || mockQuestions[0];
+			const selectedAnswerId = selectedAnswers[i];
+			
+			if (activity) {
+				// É uma atividade
+				answers.push({
+					id: i,
+					question: activity.activityTitle,
+					type: 'activity',
+					activityFiles: activityFiles[activity.id]?.length || 0,
+				});
+			} else if (questionData) {
+				// É uma pergunta
+				const selectedAnswer = questionData.options?.find((opt) => opt.id === selectedAnswerId);
+				const isCorrectAnswer = selectedAnswerId === 'option1'; // Mock: option1 é sempre correta
+				const correctAnswer = questionData.options?.find((opt) => opt.id === 'option1');
+				
+				// Verifica se é pergunta de texto (mock: questão 3)
+				if (i === 3) {
+					answers.push({
+						id: i,
+						question: 'Conte em poucas palavras como você divulga hoje o seu trabalho ou serviço para outras pessoas.',
+						type: 'text',
+						textAnswer: 'Eu mando mensagem no WhatsApp pros meus clientes quando tenho bolo novo e posto foto no meu Facebook pra mostrar os bolos que faço.',
+						audioFiles: [
+							{ url: '/audio/audio1.mp3', duration: '0:35' },
+							{ url: '/audio/audio2.mp3', duration: '0:25' },
+						],
+					});
+				} else {
+					// Pergunta de múltipla escolha
+					answers.push({
+						id: i,
+						question: questionData.question,
+						type: 'multiple-choice',
+						isCorrect: isCorrectAnswer,
+						selectedAnswer: selectedAnswer?.text || '',
+						correctAnswer: !isCorrectAnswer ? correctAnswer?.text : undefined,
+					});
+				}
+			}
+		}
+		
+		return answers;
 	};
 
 	return (
 		<div className='w-full'>
-			{isShowingFeedback ? (
+			{showSuccess ? (
+				<QuizSuccessStep answers={prepareAnswers()} quizTitle='Quiz Encontro 03' />
+			) : isShowingFeedback ? (
 				<QuizFeedbackStep
 					question={currentQuestionData}
 					currentQuestion={currentQuestion}
@@ -336,156 +433,5 @@ export const Quiz: FunctionComponent<QuizProps> = ({
 			)}
 		</div>
 	);
-
-	// Feedback específico para perguntas subjetivas
-	const subjectiveFeedbackData = {
-		explanation: 'Divulgar seu trabalho é importante para mais pessoas conhecerem o que você faz. Continue divulgando seu trabalho e/ou serviço para outras pessoas nas suas redes sociais.',
-		// video: {
-		// 	thumbnail: 'https://via.placeholder.com/400x225/6B46C1/FFFFFF?text=Video+Thumbnail',
-		// 	url: 'https://example.com/video.mp4',
-		// 	title: 'Vídeo sobre divulgação',
-		// },
-	};
-
-	const selectedAnswerId = selectedAnswers[currentQuestion] || '';
-	const subjectiveAnswer = subjectiveAnswers[currentQuestion] || '';
-
-	// Prepara dados das respostas para a tela de conclusão
-	const prepareCompletionAnswers = (): QuizAnswer[] => {
-		return mockQuestions.map((question, index) => {
-			const questionId = question.id || index + 1;
-			const isSubjective = question.type === 'subjective';
-			
-			if (isSubjective) {
-				// Para questões subjetivas, usa dados reais ou mockados
-				let mockAnswer = '';
-				if (questionId === 3) {
-					mockAnswer = 'Eu mando mensagem no WhatsApp pros meus clientes quando tenho bolo novo e posto Foto no meu Facebook pra mostrar os bolos que faço.';
-				}
-				
-				return {
-					questionId,
-					question,
-					subjectiveAnswer: subjectiveAnswers[questionId] || mockAnswer || 'Resposta de exemplo para questões subjetivas',
-					audioBlobs: subjectiveAudios[questionId] || [],
-				};
-			} else {
-				// Para questões objetivas, simula respostas corretas e incorretas
-				const correctAnswerId = question.options?.[0]?.id || 'option1';
-				let selectedOptionId = selectedAnswers[questionId];
-				
-				// Se não houver resposta selecionada, usa mock: primeira correta, segunda incorreta
-				if (!selectedOptionId) {
-					selectedOptionId = questionId === 1 ? correctAnswerId : 'option2';
-				}
-				
-				const isCorrect = selectedOptionId === correctAnswerId;
-				
-				return {
-					questionId,
-					question,
-					selectedOptionId,
-					isCorrect,
-					correctAnswerId: isCorrect ? undefined : correctAnswerId,
-				};
-			}
-		});
-	};
-
-	// Validação: garantir que temos uma pergunta válida
-	if (!currentQuestionData && !showCompletion) {
-		return (
-			<div className='w-full p-4 text-center'>
-				<p className='text-[#6E707A]'>Pergunta não encontrada.</p>
-			</div>
-		);
-	}
-
-	// Se está na tela de conclusão, mostra ela
-	if (showCompletion) {
-		return (
-			<div className='w-full max-w-full overflow-x-hidden box-border'>
-				<QuizCompletionStep answers={prepareCompletionAnswers()} />
-			</div>
-		);
-	}
-
-	// Renderização com tratamento de erro
-	try {
-		return (
-			<div className='w-full max-w-full overflow-x-hidden box-border'>
-				{/* Botão temporário para visualizar tela de conclusão - remover em produção */}
-				<div className='mb-4 flex justify-end'>
-					<button
-						onClick={handleShowCompletion}
-						className='bg-[#FF6F61] hover:bg-[#FF5A4A] text-white font-medium px-4 py-2 rounded-lg text-sm transition-colors'>
-						[DEV] Ver Tela Final
-					</button>
-				</div>
-				{isShowingFeedback ? (
-					isSubjective ? (
-						<QuizSubjectiveFeedbackStep
-							question={currentQuestionData}
-							currentQuestion={currentQuestion}
-							totalQuestions={totalQuestions}
-							userAnswer={subjectiveAnswer}
-							audioBlobs={subjectiveAudios[currentQuestion] || []}
-							feedbackExplanation={subjectiveFeedbackData.explanation}
-							video={undefined}
-							onNext={handleNextFromFeedback}
-						/>
-					) : currentQuestionData.options && currentQuestionData.options.length > 0 ? (
-						<QuizFeedbackStep
-							question={currentQuestionData}
-							currentQuestion={currentQuestion}
-							totalQuestions={totalQuestions}
-							selectedAnswerId={selectedAnswerId}
-							points={feedbackData.points}
-							feedbackExplanation={feedbackData.explanation}
-							isCorrect={isCorrect}
-							correctAnswerId={correctAnswerId}
-							video={undefined}
-							onNext={handleNextFromFeedback}
-						/>
-					) : (
-						<div className='w-full p-4 text-center'>
-							<p className='text-[#6E707A]'>Erro ao carregar feedback. Por favor, tente novamente.</p>
-						</div>
-					)
-				) : isSubjective ? (
-				<QuizSubjectiveQuestionStep
-					question={currentQuestionData}
-					currentQuestion={currentQuestion}
-					totalQuestions={totalQuestions}
-					answer={subjectiveAnswers[currentQuestion]}
-					audioBlobs={subjectiveAudios[currentQuestion] || []}
-					onAnswerChange={handleAnswerChange}
-					onAudioChange={handleAudioChange}
-					onConfirmAnswer={handleConfirmAnswer}
-				/>
-				) : currentQuestionData.options && currentQuestionData.options.length > 0 ? (
-					<QuizQuestionStep
-						question={currentQuestionData}
-						currentQuestion={currentQuestion}
-						totalQuestions={totalQuestions}
-						selectedAnswer={selectedAnswerId || undefined}
-						onAnswerSelect={handleAnswerSelect}
-						onConfirmAnswer={handleConfirmAnswer}
-					/>
-				) : (
-					<div className='w-full p-4 text-center'>
-						<p className='text-[#6E707A]'>Erro ao carregar pergunta. Por favor, tente novamente.</p>
-					</div>
-				)}
-			</div>
-		);
-	} catch (error) {
-		console.error('Erro ao renderizar quiz:', error);
-		return (
-			<div className='w-full p-4 text-center'>
-				<p className='text-[#FF6F61]'>Ocorreu um erro ao carregar o quiz. Por favor, recarregue a página.</p>
-			</div>
-		);
-	}
 };
 
