@@ -285,58 +285,7 @@ export const Quiz: FunctionComponent<QuizProps> = ({
 		points: 0,
 		explanation: '',
 	};
-
-	return (
-		<div className='w-full'>
-			{isShowingFeedback ? (
-				<QuizFeedbackStep
-					question={currentQuestionData}
-					currentQuestion={currentQuestion}
-					totalQuestions={totalQuestions}
-					selectedAnswerId={selectedAnswers[currentQuestion]}
-					points={feedbackData.points}
-					feedbackExplanation={feedbackData.explanation}
-					isCorrect={isCorrect}
-					correctAnswerId={correctAnswerId}
-					video={feedbackData.video}
-					onNext={handleNextFromFeedback}
-				/>
-			) : isShowingActivityFeedback && currentActivity ? (
-				<QuizActivityFeedbackStep
-					currentQuestion={currentQuestion}
-					totalQuestions={totalQuestions}
-					activityTitle={currentActivity.activityTitle}
-					activityDescription={currentActivity.activityDescription}
-					feedbackText='Organizar o que você ganha e o que gasta ajuda a entender melhor seu dinheiro. Assim, você consegue se planejar, evitar dívidas e dar passos mais seguros no seu negócio e na sua vida.'
-					submittedFiles={activityFiles[currentActivity.id] || []}
-					video={currentActivity.video}
-					onNext={handleActivityFeedbackNext}
-				/>
-			) : isActivityStep && currentActivity ? (
-				<QuizActivityStep
-					currentQuestion={currentQuestion}
-					totalQuestions={totalQuestions}
-					activityTitle={currentActivity.activityTitle}
-					activityDescription={currentActivity.activityDescription}
-					suggestionLabel={currentActivity.suggestionLabel}
-					downloadButtonText={currentActivity.downloadButtonText}
-					downloadUrl={currentActivity.downloadUrl}
-					onSubmit={handleActivitySubmit}
-					onNext={handleActivityNext}
-				/>
-			) : (
-				<QuizQuestionStep
-					question={currentQuestionData}
-					currentQuestion={currentQuestion}
-					totalQuestions={totalQuestions}
-					selectedAnswer={selectedAnswers[currentQuestion]}
-					onAnswerSelect={handleAnswerSelect}
-					onConfirmAnswer={handleConfirmAnswer}
-				/>
-			)}
-		</div>
-	);
-
+	
 	// Feedback específico para perguntas subjetivas
 	const subjectiveFeedbackData = {
 		explanation: 'Divulgar seu trabalho é importante para mais pessoas conhecerem o que você faz. Continue divulgando seu trabalho e/ou serviço para outras pessoas nas suas redes sociais.',
@@ -452,17 +401,40 @@ export const Quiz: FunctionComponent<QuizProps> = ({
 							<p className='text-[#6E707A]'>Erro ao carregar feedback. Por favor, tente novamente.</p>
 						</div>
 					)
+				) : isShowingActivityFeedback && currentActivity ? (
+					<QuizActivityFeedbackStep
+						currentQuestion={currentQuestion}
+						totalQuestions={totalQuestions}
+						activityTitle={currentActivity.activityTitle}
+						activityDescription={currentActivity.activityDescription}
+						feedbackText='Organizar o que você ganha e o que gasta ajuda a entender melhor seu dinheiro. Assim, você consegue se planejar, evitar dívidas e dar passos mais seguros no seu negócio e na sua vida.'
+						submittedFiles={activityFiles[currentActivity.id] || []}
+						video={currentActivity.video}
+						onNext={handleActivityFeedbackNext}
+					/>
+				) : isActivityStep && currentActivity ? (
+					<QuizActivityStep
+						currentQuestion={currentQuestion}
+						totalQuestions={totalQuestions}
+						activityTitle={currentActivity.activityTitle}
+						activityDescription={currentActivity.activityDescription}
+						suggestionLabel={currentActivity.suggestionLabel}
+						downloadButtonText={currentActivity.downloadButtonText}
+						downloadUrl={currentActivity.downloadUrl}
+						onSubmit={handleActivitySubmit}
+						onNext={handleActivityNext}
+					/>
 				) : isSubjective ? (
-				<QuizSubjectiveQuestionStep
-					question={currentQuestionData}
-					currentQuestion={currentQuestion}
-					totalQuestions={totalQuestions}
-					answer={subjectiveAnswers[currentQuestion]}
-					audioBlobs={subjectiveAudios[currentQuestion] || []}
-					onAnswerChange={handleAnswerChange}
-					onAudioChange={handleAudioChange}
-					onConfirmAnswer={handleConfirmAnswer}
-				/>
+					<QuizSubjectiveQuestionStep
+						question={currentQuestionData}
+						currentQuestion={currentQuestion}
+						totalQuestions={totalQuestions}
+						answer={subjectiveAnswers[currentQuestion]}
+						audioBlobs={subjectiveAudios[currentQuestion] || []}
+						onAnswerChange={handleAnswerChange}
+						onAudioChange={handleAudioChange}
+						onConfirmAnswer={handleConfirmAnswer}
+					/>
 				) : currentQuestionData.options && currentQuestionData.options.length > 0 ? (
 					<QuizQuestionStep
 						question={currentQuestionData}
