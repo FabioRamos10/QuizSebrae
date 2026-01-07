@@ -35,26 +35,35 @@ export const QuizSuccessStep: FunctionComponent<QuizSuccessStepProps> = ({ answe
     console.log('QuizSuccessStep - Answers recebidas:', answers);
     console.log('QuizSuccessStep - Resposta Orçamento pessoal:', answers.find(a => a.question.includes('Orçamento pessoal')));
     
-    // CORREÇÃO: Força todas as respostas "Orçamento pessoal" para tipo 'activity'
-    const correctedAnswers = answers.map(answer => {
-        if (answer.question.includes('Orçamento pessoal')) {
-            console.log('Corrigindo resposta Orçamento pessoal:', {
-                antes: { type: answer.type, activityFiles: answer.activityFiles, textAnswer: answer.textAnswer },
-                depois: { type: 'activity', activityFiles: answer.activityFiles || 0 }
-            });
-            // FORÇA o tipo para activity e remove propriedades de texto
-            const corrected = {
-                ...answer,
-                type: 'activity' as const,
-                activityFiles: answer.activityFiles || 0,
-            };
-            // Remove explicitamente textAnswer e audioFiles
-            delete (corrected as any).textAnswer;
-            delete (corrected as any).audioFiles;
-            return corrected;
-        }
-        return answer;
-    });
+    // CORREÇÃO: Força todas as respostas "Orçamento pessoal" para tipo 'activity' e remove duplicatas
+    const seenOrcamentoPessoal = new Set<number>();
+    const correctedAnswers = answers
+        .map(answer => {
+            if (answer.question.includes('Orçamento pessoal')) {
+                // Se já vimos uma resposta "Orçamento pessoal", pula esta (remove duplicata)
+                if (seenOrcamentoPessoal.has(answer.id)) {
+                    return null;
+                }
+                seenOrcamentoPessoal.add(answer.id);
+                
+                console.log('Corrigindo resposta Orçamento pessoal:', {
+                    antes: { type: answer.type, activityFiles: answer.activityFiles, textAnswer: answer.textAnswer },
+                    depois: { type: 'activity', activityFiles: answer.activityFiles || 0 }
+                });
+                // FORÇA o tipo para activity e remove propriedades de texto
+                const corrected = {
+                    ...answer,
+                    type: 'activity' as const,
+                    activityFiles: answer.activityFiles || 0,
+                };
+                // Remove explicitamente textAnswer e audioFiles
+                delete (corrected as any).textAnswer;
+                delete (corrected as any).audioFiles;
+                return corrected;
+            }
+            return answer;
+        })
+        .filter((answer): answer is QuizAnswer => answer !== null);
     
     // Reorganiza as respostas:
     // 1. "Qual é uma vantagem..." com ícone de pessoas (correta) - posição 1

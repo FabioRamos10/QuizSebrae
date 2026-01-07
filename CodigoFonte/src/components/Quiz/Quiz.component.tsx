@@ -1,6 +1,6 @@
 'use client';
 
-import { FunctionComponent, useState } from 'react';
+import { FunctionComponent, useState, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { QuizProps, QuizQuestion, QuizActivity, QuizAnswer as QuizAnswerInterface } from './Quiz.interface';
 import { QuizQuestionStep } from './components/QuizQuestionStep';
@@ -103,6 +103,39 @@ export const Quiz: FunctionComponent<QuizProps> = ({
 
 	const router = useRouter();
 	const pathname = usePathname();
+
+	// Pula automaticamente questões subjetivas de "Orçamento pessoal" (escrita e áudio)
+	// Mas mantém as atividades de upload de arquivos
+	useEffect(() => {
+		if (showSuccess || showCompletion) return;
+
+		const questionData = mockQuestions.find((q) => q.id === currentQuestion) || null;
+		const activity = activities.find((a) => a.id === currentQuestion);
+		
+		// Verifica se é questão subjetiva de "Orçamento pessoal" (não é atividade)
+		const isOrcamentoSubjective = questionData?.type === 'subjective' && 
+		                              questionData?.question?.includes('Orçamento pessoal') &&
+		                              !activity; // Só pula se não for uma atividade (upload de arquivos)
+		
+		if (isOrcamentoSubjective && currentQuestion <= totalQuestions) {
+			// Pula automaticamente para a próxima questão válida
+			let foundNext = false;
+			for (let i = currentQuestion + 1; i <= totalQuestions; i++) {
+				const nextQuestionData = mockQuestions.find((q) => q.id === i);
+				const nextActivity = activities.find((a) => a.id === i);
+				// Se encontrou uma questão ou atividade válida, vai para ela
+				if (nextQuestionData || nextActivity) {
+					setCurrentQuestion(i);
+					foundNext = true;
+					break;
+				}
+			}
+			// Se não encontrou próxima questão válida, finaliza o quiz
+			if (!foundNext) {
+				setShowSuccess(true);
+			}
+		}
+	}, [currentQuestion, totalQuestions, showSuccess, showCompletion, activities]);
 
 	// Funções de navegação entre encontros
 	const handlePreviousEncounter = (e?: React.MouseEvent) => {
@@ -207,14 +240,23 @@ export const Quiz: FunctionComponent<QuizProps> = ({
 			
 			// Vai para a próxima pergunta
 			const nextQuestion = currentQuestion + 1;
-			// Valida se a próxima pergunta existe no array
-			if (nextQuestion <= mockQuestions.length && nextQuestion <= totalQuestions) {
-				setCurrentQuestion(nextQuestion);
-				if (onNext) {
-					onNext();
+			// Busca a próxima questão que existe no array
+			let foundNext = false;
+			for (let i = nextQuestion; i <= totalQuestions; i++) {
+				const nextQuestionData = mockQuestions.find((q) => q.id === i);
+				const nextActivity = activities.find((a) => a.id === i);
+				// Se encontrou uma questão ou atividade válida, vai para ela
+				if (nextQuestionData || nextActivity) {
+					setCurrentQuestion(i);
+					if (onNext) {
+						onNext();
+					}
+					foundNext = true;
+					break;
 				}
-			} else {
-				// Se não há mais perguntas, mostra a tela de conclusão
+			}
+			// Se não encontrou próxima questão válida, mostra a tela de conclusão
+			if (!foundNext) {
 				setShowCompletion(true);
 			}
 		} catch (error) {
@@ -309,59 +351,79 @@ export const Quiz: FunctionComponent<QuizProps> = ({
 		setShowCompletion(true);
 	};
 
-	// Prepara as respostas para a tela de sucesso
+	// Prepara as respostas para a tela de sucesso - apenas questões respondidas
 	const prepareAnswers = (): QuizAnswer[] => {
 		const answers: QuizAnswer[] = [];
+		let orcamentoPessoalProcessed = false; // Flag para evitar duplicatas
 		
-		// Itera sobre todas as questões
+		// Itera sobre todas as questões, mas só inclui as que foram realmente respondidas
 		for (let i = 1; i <= totalQuestions; i++) {
 			const activity = activities.find((a) => a.id === i);
-			const questionData = mockQuestions.find((q) => q.id === i) || mockQuestions[0];
+			const questionData = mockQuestions.find((q) => q.id === i);
+			// Se não encontrou questão nem atividade, pula
+			if (!questionData && !activity) {
+				continue;
+			}
 			const selectedAnswerId = selectedAnswers[i];
 			
-			// PRIMEIRO: Verifica se é "Orçamento pessoal" - deve ser sempre tratada como atividade
-			if (questionData && questionData.question.includes('Orçamento pessoal')) {
-				// Busca arquivos pelo ID da questão ou pelo ID da atividade correspondente
-				const foundActivity = activities.find((a) => a.id === i || a.id === 3); // Busca por id da questão ou id 3
-				const activityId = foundActivity?.id || 3; // Usa id 3 como padrão se não encontrar
-				
-				// Busca arquivos em todas as chaves possíveis (prioridade: ID da questão, depois ID da atividade, depois id 3)
-				const filesCount = activityFiles[i]?.length || 
-				                  activityFiles[activityId]?.length || 
-				                  activityFiles[3]?.length ||
-				                  activityFiles[4]?.length ||
-				                  (Object.keys(activityFiles).length > 0 ? Object.values(activityFiles)[0]?.length || 0 : 0);
-				console.log('Criando atividade Orçamento pessoal (PRIORIDADE):', { 
-					id: i, 
-					activityId, 
-					foundActivity,
-					activityFilesCount: filesCount, 
-					activityFilesObj: activityFiles,
-					allActivityFiles: Object.entries(activityFiles),
-					filesByKey: {
-						byQuestionId: activityFiles[i]?.length,
-						byActivityId: activityFiles[activityId]?.length,
-						by3: activityFiles[3]?.length,
-						by4: activityFiles[4]?.length
+			// Verifica se é atividade de "Orçamento pessoal" (id 3) - prioridade
+			if (activity && activity.activityTitle.includes('Orçamento pessoal')) {
+				// Só processa se ainda não foi processada
+				if (!orcamentoPessoalProcessed) {
+					const filesCount = activityFiles[activity.id]?.length || 0;
+					if (filesCount > 0) {
+						answers.push({
+							id: i,
+							question: activity.activityTitle,
+							type: 'activity',
+							activityFiles: filesCount,
+						});
+						orcamentoPessoalProcessed = true;
 					}
-				});
-				answers.push({
-					id: i,
-					question: questionData.question,
-					type: 'activity',
-					activityFiles: filesCount,
-				});
+				}
+				continue; // Pula para a próxima iteração
+			}
+			
+			// PRIMEIRO: Verifica se é questão "Orçamento pessoal" (id 4) - só se não foi processada a atividade
+			if (questionData && questionData.question.includes('Orçamento pessoal')) {
+				// Só processa se ainda não foi processada a atividade (id 3)
+				if (!orcamentoPessoalProcessed) {
+					// Busca arquivos pelo ID da questão ou pelo ID da atividade correspondente
+					const foundActivity = activities.find((a) => a.id === i || a.id === 3); // Busca por id da questão ou id 3
+					const activityId = foundActivity?.id || 3; // Usa id 3 como padrão se não encontrar
+					
+					// Busca arquivos em todas as chaves possíveis (prioridade: ID da questão, depois ID da atividade, depois id 3)
+					const filesCount = activityFiles[i]?.length || 
+					                  activityFiles[activityId]?.length || 
+					                  activityFiles[3]?.length ||
+					                  activityFiles[4]?.length ||
+					                  (Object.keys(activityFiles).length > 0 ? Object.values(activityFiles)[0]?.length || 0 : 0);
+					
+					// Só inclui se houver arquivos enviados
+					if (filesCount > 0) {
+						answers.push({
+							id: i,
+							question: questionData.question,
+							type: 'activity',
+							activityFiles: filesCount,
+						});
+						orcamentoPessoalProcessed = true;
+					}
+				}
 				continue; // Pula para a próxima iteração
 			}
 			
 			if (activity) {
-				// É uma atividade
-				answers.push({
-					id: i,
-					question: activity.activityTitle,
-					type: 'activity',
-					activityFiles: activityFiles[activity.id]?.length || 0,
-				});
+				// É uma atividade - só inclui se houver arquivos enviados
+				const filesCount = activityFiles[activity.id]?.length || 0;
+				if (filesCount > 0) {
+					answers.push({
+						id: i,
+						question: activity.activityTitle,
+						type: 'activity',
+						activityFiles: filesCount,
+					});
+				}
 			} else if (questionData) {
 				// É uma pergunta
 				const selectedAnswer = questionData.options?.find((opt) => opt.id === selectedAnswerId);
@@ -380,41 +442,47 @@ export const Quiz: FunctionComponent<QuizProps> = ({
 						                  activityFiles[3]?.length ||
 						                  activityFiles[4]?.length ||
 						                  (Object.keys(activityFiles).length > 0 ? Object.values(activityFiles).reduce((sum, files) => sum + (files?.length || 0), 0) : 0);
-						console.log('Criando atividade Orçamento pessoal (FALLBACK):', { 
-							id: i, 
-							activityId, 
-							foundActivity,
-							activityFilesCount: filesCount
-						});
-						answers.push({
-							id: i,
-							question: questionData.question,
-							type: 'activity',
-							activityFiles: filesCount,
-						});
+						
+						// Só inclui se houver arquivos enviados
+						if (filesCount > 0) {
+							answers.push({
+								id: i,
+								question: questionData.question,
+								type: 'activity',
+								activityFiles: filesCount,
+							});
+						}
 					} else {
 						// É uma resposta de texto subjetiva (não é Orçamento pessoal)
+						// Só inclui se houver texto ou áudio
+						const hasTextAnswer = subjectiveAnswers[i] && subjectiveAnswers[i].trim().length > 0;
+						const hasAudio = subjectiveAudios[i] && subjectiveAudios[i].length > 0;
+						
+						if (hasTextAnswer || hasAudio) {
+							answers.push({
+								id: i,
+								question: questionData.question,
+								type: 'text',
+								textAnswer: subjectiveAnswers[i] || '',
+								audioFiles: (subjectiveAudios[i] || []).map((blob, index) => ({
+									url: URL.createObjectURL(blob),
+									duration: '0:30', // Duração mockada
+								})),
+							});
+						}
+					}
+				} else {
+					// Pergunta de múltipla escolha - só inclui se houver resposta selecionada
+					if (selectedAnswerId) {
 						answers.push({
 							id: i,
 							question: questionData.question,
-							type: 'text',
-							textAnswer: subjectiveAnswers[i] || '',
-							audioFiles: (subjectiveAudios[i] || []).map((blob, index) => ({
-								url: URL.createObjectURL(blob),
-								duration: '0:30', // Duração mockada
-							})),
+							type: 'multiple-choice',
+							isCorrect: isCorrectAnswer,
+							selectedAnswer: selectedAnswer?.text || '',
+							correctAnswer: !isCorrectAnswer ? correctAnswer?.text : undefined,
 						});
 					}
-				} else {
-					// Pergunta de múltipla escolha
-					answers.push({
-						id: i,
-						question: questionData.question,
-						type: 'multiple-choice',
-						isCorrect: isCorrectAnswer,
-						selectedAnswer: selectedAnswer?.text || '',
-						correctAnswer: !isCorrectAnswer ? correctAnswer?.text : undefined,
-					});
 				}
 			}
 		}
@@ -427,14 +495,8 @@ export const Quiz: FunctionComponent<QuizProps> = ({
 	const currentActivity = activities.find((a) => a.id === currentQuestion);
 	const isActivityStep = !!currentActivity;
 
-	// Busca a pergunta atual (por enquanto usa mock)
-	// Usa o índice do array (currentQuestion - 1) para garantir que sempre encontre a pergunta correta
-	// Valida se o índice está dentro do range do array
-	const questionIndex = currentQuestion - 1;
-	const currentQuestionData = 
-		questionIndex >= 0 && questionIndex < mockQuestions.length 
-			? mockQuestions[questionIndex] 
-			: mockQuestions[0];
+	// Busca a pergunta atual por ID em vez de índice do array
+	const currentQuestionData = mockQuestions.find((q) => q.id === currentQuestion) || null;
 
 	// Verifica se deve mostrar feedback ou a pergunta/atividade
 	const isShowingFeedback = showFeedback[currentQuestion];
@@ -442,11 +504,12 @@ export const Quiz: FunctionComponent<QuizProps> = ({
 	// Verifica se deve mostrar feedback ou a pergunta
 
 	// Verifica se é pergunta subjetiva (só se tiver currentQuestionData)
-	const isSubjective = currentQuestionData?.type === 'subjective' || false;
+	// Mas NÃO é subjetiva se for "Orçamento pessoal" (essa deve ser tratada como atividade)
+	const isSubjective = (currentQuestionData?.type === 'subjective' && !currentQuestionData?.question?.includes('Orçamento pessoal')) || false;
 
 	// Determina a resposta correta (em produção viria de uma API)
 	// Só define correctAnswerId se a pergunta for de múltipla escolha
-	const correctAnswerId = !isSubjective && currentQuestionData.options 
+	const correctAnswerId = !isSubjective && currentQuestionData?.options 
 		? currentQuestionData.options[0]?.id || 'option1' 
 		: undefined;
 	
@@ -596,13 +659,25 @@ export const Quiz: FunctionComponent<QuizProps> = ({
 		});
 	};
 
-	// Validação: garantir que temos uma pergunta válida
-	if (!currentQuestionData && !showCompletion) {
-		return (
-			<div className='w-full p-4 text-center'>
-				<p className='text-[#6E707A]'>Pergunta não encontrada.</p>
-			</div>
-		);
+	// Validação: se não encontrou questão e não é atividade, tenta encontrar próxima válida ou finaliza
+	if (!currentQuestionData && !currentActivity && !showCompletion && !showSuccess) {
+		// Busca próxima questão válida
+		let foundNext = false;
+		for (let i = currentQuestion + 1; i <= totalQuestions; i++) {
+			const nextQuestionData = mockQuestions.find((q) => q.id === i);
+			const nextActivity = activities.find((a) => a.id === i);
+			if (nextQuestionData || nextActivity) {
+				setCurrentQuestion(i);
+				foundNext = true;
+				break;
+			}
+		}
+		// Se não encontrou, finaliza o quiz
+		if (!foundNext) {
+			setShowSuccess(true);
+			return null;
+		}
+		return null;
 	}
 
 	// Se está na tela de conclusão, mostra ela
@@ -631,7 +706,7 @@ export const Quiz: FunctionComponent<QuizProps> = ({
 						onNext={handleNextEncounter}
 					/>
 				) : isShowingFeedback ? (
-					isSubjective ? (
+					isSubjective && currentQuestionData && !currentQuestionData.question?.includes('Orçamento pessoal') ? (
 						<QuizSubjectiveFeedbackStep
 							question={currentQuestionData}
 							currentQuestion={currentQuestion}
@@ -642,7 +717,7 @@ export const Quiz: FunctionComponent<QuizProps> = ({
 							video={undefined}
 							onNext={handleNextFromFeedback}
 						/>
-					) : currentQuestionData.options && currentQuestionData.options.length > 0 ? (
+					) : currentQuestionData && currentQuestionData.options && currentQuestionData.options.length > 0 ? (
 						<QuizFeedbackStep
 							question={currentQuestionData}
 							currentQuestion={currentQuestion}
@@ -683,17 +758,23 @@ export const Quiz: FunctionComponent<QuizProps> = ({
 						onSubmit={handleActivitySubmit}
 					/>
 				) : isSubjective ? (
-					<QuizSubjectiveQuestionStep
-						question={currentQuestionData}
-						currentQuestion={currentQuestion}
-						totalQuestions={totalQuestions}
-						answer={subjectiveAnswers[currentQuestion]}
-						audioBlobs={subjectiveAudios[currentQuestion] || []}
-						onAnswerChange={handleAnswerChange}
-						onAudioChange={handleAudioChange}
-						onConfirmAnswer={handleConfirmAnswer}
-					/>
-				) : currentQuestionData.options && currentQuestionData.options.length > 0 ? (
+					currentQuestionData && !currentQuestionData.question?.includes('Orçamento pessoal') ? (
+						<QuizSubjectiveQuestionStep
+							question={currentQuestionData}
+							currentQuestion={currentQuestion}
+							totalQuestions={totalQuestions}
+							answer={subjectiveAnswers[currentQuestion]}
+							audioBlobs={subjectiveAudios[currentQuestion] || []}
+							onAnswerChange={handleAnswerChange}
+							onAudioChange={handleAudioChange}
+							onConfirmAnswer={handleConfirmAnswer}
+						/>
+					) : (
+						<div className='w-full p-4 text-center'>
+							<p className='text-[#6E707A]'>Carregando...</p>
+						</div>
+					)
+				) : currentQuestionData && currentQuestionData.options && currentQuestionData.options.length > 0 ? (
 					<QuizQuestionStep
 						question={currentQuestionData}
 						currentQuestion={currentQuestion}
